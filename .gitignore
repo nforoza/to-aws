@@ -1,0 +1,55 @@
+# macOS
+.DS_Store
+
+# Editor directories
+.vscode/
+.idea/
+
+# Node / Python / general
+node_modules/
+venv/
+__pycache__/
+
+# Environment files (secrets)
+.env
+.env.*
+.envrc
+
+# AWS / credentials / config
+.aws/
+.aws/credentials
+.aws/config
+
+# Private keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.crt
+*.cert
+
+# Generic secret files and folders
+secrets/
+secret/
+*.secret
+*.secrets
+credentials
+*.credentials
+*.token
+*.enc
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# Build / logs / backups
+*.log
+*.bak
+dist/
+build/
+
+# Do NOT ignore YAML files for this repository (keep .yml/.yaml tracked)
+# *.yml
+# *.yaml
