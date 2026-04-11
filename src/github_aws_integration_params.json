@@ -1,0 +1,18 @@
+[
+  {
+    "ParameterKey": "GitHubOrg",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "GitHubRepo",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "GitHubBranch",
+    "ParameterValue": "main"
+  },
+  {
+    "ParameterKey": "GitHubTokenSecretName",
+    "ParameterValue": "github-token"
+  }
+]

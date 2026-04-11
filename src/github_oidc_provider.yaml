@@ -1,0 +1,33 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: GitHub Actions OIDC provider for AWS
+
+Parameters:
+  ProviderUrl:
+    Type: String
+    Default: https://token.actions.githubusercontent.com
+    Description: OIDC provider URL for GitHub Actions
+
+  Audience:
+    Type: String
+    Default: sts.amazonaws.com
+    Description: Audience allowed for the OIDC provider
+
+  ThumbprintList:
+    Type: CommaDelimitedList
+    Default: 6938fd4d98bab03faadb97b34396831e3780aea1
+    Description: >-
+      Comma-delimited list of OIDC thumbprints. Keep one value for GitHub in most cases.
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: !Ref ProviderUrl
+      ClientIdList:
+        - !Ref Audience
+      ThumbprintList: !Ref ThumbprintList
+
+Outputs:
+  GitHubOidcProviderArn:
+    Description: ARN of the GitHub OIDC provider
+    Value: !Ref GitHubOidcProvider

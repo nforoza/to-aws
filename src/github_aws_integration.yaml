@@ -1,0 +1,93 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Root stack for GitHub Actions OIDC integration in AWS using separate nested CloudFormation stacks
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Child templates
+        Parameters:
+          - OidcTemplateUrl
+          - PoliciesTemplateUrl
+          - RolesTemplateUrl
+      - Label:
+          default: Reusable role and repository configuration
+        Parameters:
+          - GitHubConfigJson
+          - RoleConfigJson
+    ParameterLabels:
+      OidcTemplateUrl:
+        default: OIDC provider child template URL
+      PoliciesTemplateUrl:
+        default: IAM policies child template URL
+      RolesTemplateUrl:
+        default: IAM roles child template URL
+      GitHubConfigJson:
+        default: GitHub configuration JSON string
+      RoleConfigJson:
+        default: Role configuration JSON string
+
+Parameters:
+  OidcTemplateUrl:
+    Type: String
+    Description: S3 URL of the child template that creates the GitHub OIDC provider
+
+  PoliciesTemplateUrl:
+    Type: String
+    Description: S3 URL of the child template that creates IAM managed policies for GitHub workflows
+
+  RolesTemplateUrl:
+    Type: String
+    Description: S3 URL of the child template that creates IAM roles for GitHub workflows
+
+  GitHubConfigJson:
+    Type: String
+    Description: >-
+      JSON string with reusable GitHub configuration. Example:
+      {"org":"my-org","repo":"my-repo","branch":"main"}
+    Default: '{"org":"my-org","repo":"my-repo","branch":"main"}'
+
+  RoleConfigJson:
+    Type: String
+    Description: >-
+      JSON string with reusable role configuration. Example:
+      {"infraRoleName":"github-actions-infra-role","appRoleName":"github-actions-app-role"}
+    Default: '{"infraRoleName":"github-actions-infra-role","appRoleName":"github-actions-app-role"}'
+
+Resources:
+  GitHubOidcProviderStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref OidcTemplateUrl
+
+  GitHubPoliciesStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref PoliciesTemplateUrl
+      Parameters:
+        GitHubConfigJson: !Ref GitHubConfigJson
+        RoleConfigJson: !Ref RoleConfigJson
+
+  GitHubRolesStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref RolesTemplateUrl
+      Parameters:
+        GitHubOidcProviderArn: !GetAtt GitHubOidcProviderStack.Outputs.GitHubOidcProviderArn
+        GitHubConfigJson: !Ref GitHubConfigJson
+        RoleConfigJson: !Ref RoleConfigJson
+        InfraPolicyArn: !GetAtt GitHubPoliciesStack.Outputs.InfraPolicyArn
+        AppPolicyArn: !GetAtt GitHubPoliciesStack.Outputs.AppPolicyArn
+
+Outputs:
+  GitHubOidcProviderArn:
+    Description: ARN of the GitHub OIDC provider
+    Value: !GetAtt GitHubOidcProviderStack.Outputs.GitHubOidcProviderArn
+
+  GitHubInfraRoleArn:
+    Description: ARN of the infrastructure deployment role
+    Value: !GetAtt GitHubRolesStack.Outputs.GitHubInfraRoleArn
+
+  GitHubAppRoleArn:
+    Description: ARN of the Lambda application deployment role
+    Value: !GetAtt GitHubRolesStack.Outputs.GitHubAppRoleArn

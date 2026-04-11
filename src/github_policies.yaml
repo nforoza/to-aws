@@ -1,0 +1,146 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Managed IAM policies for GitHub Actions infrastructure and Lambda deployments
+
+Parameters:
+  GitHubConfigJson:
+    Type: String
+    Description: >-
+      JSON string kept for consistency with the root stack, for example
+      {"org":"my-org","repo":"my-repo","branch":"main"}
+    Default: '{"org":"my-org","repo":"my-repo","branch":"main"}'
+
+  RoleConfigJson:
+    Type: String
+    Description: >-
+      JSON string kept for consistency with the root stack, for example
+      {"infraRoleName":"github-actions-infra-role","appRoleName":"github-actions-app-role"}
+    Default: '{"infraRoleName":"github-actions-infra-role","appRoleName":"github-actions-app-role"}'
+
+  InfraPolicyName:
+    Type: String
+    Default: github-actions-infra-policy
+    Description: Managed policy name for infrastructure deployments
+
+  AppPolicyName:
+    Type: String
+    Default: github-actions-lambda-app-policy
+    Description: Managed policy name for Lambda application deployments
+
+  CloudFormationStackNamePrefix:
+    Type: String
+    Default: ''
+    Description: Optional stack-name prefix restriction for CloudFormation actions
+
+  LambdaFunctionArn:
+    Type: String
+    Default: '*'
+    Description: Lambda function ARN allowed for application deployments
+
+  ArtifactBucketName:
+    Type: String
+    Default: ''
+    Description: Optional S3 bucket used to store Lambda artifacts
+
+Conditions:
+  HasStackPrefix: !Not [!Equals [!Ref CloudFormationStackNamePrefix, '']]
+  HasArtifactBucket: !Not [!Equals [!Ref ArtifactBucketName, '']]
+
+Resources:
+  GitHubInfraDeployPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Ref InfraPolicyName
+      Description: Policy for GitHub Actions infrastructure deployments through CloudFormation
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: CloudFormationDeploy
+            Effect: Allow
+            Action:
+              - cloudformation:CreateStack
+              - cloudformation:UpdateStack
+              - cloudformation:DeleteStack
+              - cloudformation:DescribeStacks
+              - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeStackResources
+              - cloudformation:GetTemplate
+              - cloudformation:ValidateTemplate
+              - cloudformation:CreateChangeSet
+              - cloudformation:DeleteChangeSet
+              - cloudformation:DescribeChangeSet
+              - cloudformation:ExecuteChangeSet
+            Resource: !If
+              - HasStackPrefix
+              - !Sub arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${CloudFormationStackNamePrefix}*
+              - !Sub arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/*
+
+          - Sid: PassCloudFormationExecutionRoles
+            Effect: Allow
+            Action:
+              - iam:PassRole
+            Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/*
+
+          - Sid: ReadCallerIdentity
+            Effect: Allow
+            Action:
+              - sts:GetCallerIdentity
+            Resource: "*"
+
+          - Sid: S3ArtifactAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:ListBucket
+            Resource: !If
+              - HasArtifactBucket
+              - - !Sub arn:${AWS::Partition}:s3:::${ArtifactBucketName}
+                - !Sub arn:${AWS::Partition}:s3:::${ArtifactBucketName}/*
+              - !Ref AWS::NoValue
+
+  GitHubAppDeployPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Ref AppPolicyName
+      Description: Policy for GitHub Actions Lambda application deployments
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: LambdaCodeAndConfigDeploy
+            Effect: Allow
+            Action:
+              - lambda:UpdateFunctionCode
+              - lambda:UpdateFunctionConfiguration
+              - lambda:GetFunction
+              - lambda:GetFunctionConfiguration
+              - lambda:PublishVersion
+              - lambda:UpdateAlias
+              - lambda:GetAlias
+              - lambda:ListVersionsByFunction
+            Resource: !Ref LambdaFunctionArn
+
+          - Sid: ReadCallerIdentity
+            Effect: Allow
+            Action:
+              - sts:GetCallerIdentity
+            Resource: "*"
+
+          - Sid: ReadArtifactsFromS3
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource: !If
+              - HasArtifactBucket
+              - - !Sub arn:${AWS::Partition}:s3:::${ArtifactBucketName}
+                - !Sub arn:${AWS::Partition}:s3:::${ArtifactBucketName}/*
+              - !Ref AWS::NoValue
+
+Outputs:
+  InfraPolicyArn:
+    Description: ARN of the infrastructure deployment managed policy
+    Value: !Ref GitHubInfraDeployPolicy
+
+  AppPolicyArn:
+    Description: ARN of the Lambda application deployment managed policy
+    Value: !Ref GitHubAppDeployPolicy
