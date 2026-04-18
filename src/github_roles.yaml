@@ -6,20 +6,6 @@ Parameters:
     Type: String
     Description: ARN of the GitHub OIDC provider
 
-  GitHubConfigJson:
-    Type: String
-    Description: >-
-      JSON string kept for consistency with the root stack, for example
-      {"org":"my-org","repo":"my-repo","branch":"main"}
-    Default: '{"org":"my-org","repo":"my-repo","branch":"main"}'
-
-  RoleConfigJson:
-    Type: String
-    Description: >-
-      JSON string kept for consistency with the root stack, for example
-      {"infraRoleName":"github-actions-infra-role","appRoleName":"github-actions-app-role"}
-    Default: '{"infraRoleName":"github-actions-infra-role","appRoleName":"github-actions-app-role"}'
-
   GitHubOrg:
     Type: String
     Default: my-org

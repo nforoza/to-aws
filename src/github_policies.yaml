@@ -2,20 +2,6 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: Managed IAM policies for GitHub Actions infrastructure and Lambda deployments
 
 Parameters:
-  GitHubConfigJson:
-    Type: String
-    Description: >-
-      JSON string kept for consistency with the root stack, for example
-      {"org":"my-org","repo":"my-repo","branch":"main"}
-    Default: '{"org":"my-org","repo":"my-repo","branch":"main"}'
-
-  RoleConfigJson:
-    Type: String
-    Description: >-
-      JSON string kept for consistency with the root stack, for example
-      {"infraRoleName":"github-actions-infra-role","appRoleName":"github-actions-app-role"}
-    Default: '{"infraRoleName":"github-actions-infra-role","appRoleName":"github-actions-app-role"}'
-
   InfraPolicyName:
     Type: String
     Default: github-actions-infra-policy

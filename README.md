@@ -1,102 +1,148 @@
 # GitHub Actions → AWS OIDC integration (CloudFormation)
 
-This folder contains CloudFormation templates to integrate GitHub Actions with AWS using OIDC. The templates create an OIDC provider, two managed IAM policies, and two IAM roles that GitHub Actions can assume.
+Reusable CloudFormation templates that allow GitHub Actions workflows to authenticate with AWS via OIDC — no long-lived credentials stored in GitHub.
 
-Files
-- `github_oidc_provider.yaml` — Creates an IAM OIDC provider for GitHub Actions (`token.actions.githubusercontent.com`).
-- `github_policies.yaml` — Creates two IAM managed policies:
-  - Infra policy (CloudFormation + S3 + PassRole)
-  - App policy (Lambda deploy permissions)
-- `github_roles.yaml` — Creates two IAM roles with trust configured for GitHub OIDC (branch or environment subject). Each role attaches one of the managed policies.
-- `github_aws_integration.yaml` — Root stack that deploys the three child stacks and wires outputs between them.
+Deploy one stack per repository that needs AWS access. Each stack creates a scoped OIDC provider, two IAM policies, and two IAM roles that only that repository's workflows can assume.
 
-Quick overview
-- Deploy the OIDC provider so GitHub Actions can request web identity tokens AWS trusts.
-- Create managed policies that describe allowed actions for infra (CloudFormation) and app (Lambda) deployments.
-- Create roles that GitHub Actions can assume via OIDC; role trust is restricted to a repo+branch or repo+environment.
-- Use the root stack (`github_aws_integration.yaml`) to deploy child stacks in one go (recommended) or deploy child templates individually.
+---
 
-Key parameters (summary)
-- `github_oidc_provider.yaml`
-  - `ProviderUrl` (default `https://token.actions.githubusercontent.com`)
-  - `Audience` (default `sts.amazonaws.com`)
-  - `ThumbprintList` (default GitHub CA thumbprint)
+## How it works
 
-- `github_policies.yaml`
-  - `InfraPolicyName`, `AppPolicyName` — managed policy names
-  - `CloudFormationStackNamePrefix` — optional, restrict CloudFormation actions to stacks with this prefix
-  - `ArtifactBucketName` — optional S3 bucket name to limit S3 access
-  - `LambdaFunctionArn` — restrict Lambda actions
+1. GitHub Actions requests a short-lived OIDC token from GitHub.
+2. AWS IAM verifies the token against the OIDC provider created by these templates.
+3. The workflow assumes an IAM role scoped to a specific org/repo/branch — no AWS credentials are stored anywhere.
 
-- `github_roles.yaml`
-  - `GitHubOidcProviderArn` — ARN from the OIDC stack
-  - `UseGitHubEnvironment` — `'true'` to use environment subject or `'false'` for branch subject
-  - `GitHubOrg`, `GitHubRepo`, `GitHubBranch`, `GitHubEnvironmentName`
-  - `InfraPolicyArn`, `AppPolicyArn` — ARNs of the managed policies
+---
 
-- `github_aws_integration.yaml` (root)
-  - `OidcTemplateUrl`, `PoliciesTemplateUrl`, `RolesTemplateUrl` — S3 URLs for child templates
-  - `GitHubConfigJson`, `RoleConfigJson` — convenience JSON strings
+## Repository structure
 
-Important outputs
-- `GitHubOidcProviderArn` — ARN of the OIDC provider
-- `InfraPolicyArn` / `AppPolicyArn` — ARNs of the managed policies
-- `GitHubInfraRoleArn` / `GitHubAppRoleArn` — ARNs of the roles GitHub Actions will assume
-
-Deployment example (upload child templates to S3 and deploy root)
-
-1) Upload templates to S3 (replace `my-cf-templates` and region/account with your values):
-
-```zsh
-aws s3 cp github_oidc_provider.yaml s3://my-cf-templates/github_oidc_provider.yaml
-aws s3 cp github_policies.yaml s3://my-cf-templates/github_policies.yaml
-aws s3 cp github_roles.yaml s3://my-cf-templates/github_roles.yaml
+```
+src/
+├── github_aws_integration.yaml   # Root stack — deploys the three child stacks
+├── github_oidc_provider.yaml     # Child stack — IAM OIDC provider for GitHub Actions
+├── github_policies.yaml          # Child stack — IAM managed policies (infra + app)
+├── github_roles.yaml             # Child stack — IAM roles GitHub Actions will assume
+├── deploy.sh                     # Orchestrator: uploads templates then deploys the stack
+├── upload_templates.sh           # Uploads CloudFormation templates to S3
+└── cloudformation.sh             # Deploys the root CloudFormation stack
 ```
 
-2) Deploy root stack (providing Template URLs):
+> `set_env.sh` is gitignored. Copy the template below, fill in your values, and source it before deploying.
 
-```zsh
-aws cloudformation deploy \
-  --stack-name GitHub-Actions-Integration \
-  --template-file github_aws_integration.yaml \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides \
-    OidcTemplateUrl=https://my-cf-templates.s3.amazonaws.com/github_oidc_provider.yaml \
-    PoliciesTemplateUrl=https://my-cf-templates.s3.amazonaws.com/github_policies.yaml \
-    RolesTemplateUrl=https://my-cf-templates.s3.amazonaws.com/github_roles.yaml \
-  --region us-east-1
+---
+
+## Quickstart
+
+### 1. Create your local environment file
+
+Create `src/set_env.sh` (it will not be committed):
+
+```bash
+#!/usr/bin/env bash
+export GITHUB_ORG=<your-github-org-or-username>
+export GITHUB_REPO=<repository-that-needs-aws-access>
+export GITHUB_BRANCH=main
+export CF_BUCKET=<s3-bucket-for-cloudformation-templates>
+export CF_PREFIX=<s3-key-prefix>
+export ARTIFACT_BUCKET=<s3-bucket-for-deployment-artifacts>
+export AWS_REGION=<aws-region>
 ```
 
-Notes
-- `CAPABILITY_NAMED_IAM` is required because these templates create IAM resources.
-- Alternatively deploy child templates individually and pass stack outputs (OIDC ARN, policy ARNs) to the roles stack.
+### 2. Deploy
 
-Sample minimal parameter values (for tests)
-- GitHub org: `acme`
-- repo: `service`
-- branch: `main`
-- Use branch subject (default behaviour)
+```bash
+source ./src/set_env.sh && ./src/deploy.sh
+```
 
-Security and best practices
-- Least privilege
-  - Restrict `iam:PassRole` where possible (current policy allows `role/*` — tighten it to specific roles CloudFormation should pass).
-  - Restrict `LambdaFunctionArn` to only the Lambda(s) that need deploy access.
-  - Use `CloudFormationStackNamePrefix` to scope CloudFormation permission to stacks created by GitHub.
-- Use GitHub Environments
-  - For stricter controls on production deployments, enable `UseGitHubEnvironment` and set `GitHubEnvironmentName`. Use required reviewers and approvals in GitHub.
-- S3 artifact bucket
-  - If you upload build artifacts to S3, set `ArtifactBucketName` to constrain S3 access, enable SSE, and restrict bucket policy.
-- Validate thumbprint and provider URL
-  - The default thumbprint is GitHub's common CA fingerprint; verify if your environment needs a different value.
-- Session duration
-  - Consider adding `MaxSessionDuration` to roles if you want to cap assumed-session length.
-- Test in non-prod first
-  - Deploy to a sandbox account or staging environment and test workflows before granting prod privileges.
+`deploy.sh` first uploads the CloudFormation templates to S3, then deploys the root stack.
 
-Using the roles in GitHub Actions
+### 3. Use flags instead of environment variables (optional)
 
-- Ensure the job requests an ID token and `contents: read` when checking out code.
-- Example job using `aws-actions/configure-aws-credentials` to assume the infra role:
+All parameters can also be passed directly as flags, which override any exported env vars:
+
+```bash
+./src/deploy.sh \
+  --github-org      my-org \
+  --github-repo     my-app \
+  --github-branch   main \
+  --cf-bucket       my-cloudformation-bucket \
+  --cf-prefix       github-integration \
+  --artifact-bucket my-artifacts-bucket \
+  --region          us-east-1
+```
+
+Run `./src/deploy.sh --help` to see all available options.
+
+---
+
+## Deploying for multiple repositories
+
+Each repository that needs AWS access gets its own stack. Re-run `deploy.sh` with a different `--github-repo` value:
+
+```bash
+./src/deploy.sh --github-repo data-collector ...
+./src/deploy.sh --github-repo trading-infrastructure ...
+```
+
+The stack name and IAM role names include the repository name to avoid conflicts:
+- Stack: `GitHub-Actions-Integration-<repo>`
+- Roles: `github-infra-<repo>`, `github-app-<repo>`
+
+---
+
+## Parameters reference
+
+### Root stack (`github_aws_integration.yaml`)
+
+| Parameter | Description |
+|---|---|
+| `OidcTemplateUrl` | S3 HTTPS URL of `github_oidc_provider.yaml` |
+| `PoliciesTemplateUrl` | S3 HTTPS URL of `github_policies.yaml` |
+| `RolesTemplateUrl` | S3 HTTPS URL of `github_roles.yaml` |
+| `GitHubOrg` | GitHub organization or username |
+| `GitHubRepo` | Repository that will assume the roles |
+| `GitHubBranch` | Branch allowed to assume the roles |
+| `InfraRoleName` | IAM role name for infrastructure deployments |
+| `AppRoleName` | IAM role name for Lambda application deployments |
+| `ArtifactBucketName` | S3 bucket name (not ARN) for deployment artifacts |
+
+### Policies stack (`github_policies.yaml`)
+
+| Parameter | Description |
+|---|---|
+| `InfraPolicyName` | Managed policy name for infra deployments |
+| `AppPolicyName` | Managed policy name for Lambda deployments |
+| `CloudFormationStackNamePrefix` | Optional — restrict CloudFormation actions to stacks with this prefix |
+| `LambdaFunctionArn` | Lambda ARN to restrict app deploy permissions (default `*`) |
+| `ArtifactBucketName` | S3 bucket name to constrain artifact access |
+
+### Roles stack (`github_roles.yaml`)
+
+| Parameter | Description |
+|---|---|
+| `GitHubOrg` / `GitHubRepo` / `GitHubBranch` | OIDC trust condition — only this repo/branch can assume the roles |
+| `UseGitHubEnvironment` | `'true'` to use a GitHub environment subject instead of a branch |
+| `GitHubEnvironmentName` | GitHub environment name when `UseGitHubEnvironment` is `'true'` |
+| `InfraRoleName` / `AppRoleName` | IAM role names |
+| `InfraPolicyArn` / `AppPolicyArn` | Passed automatically by the root stack |
+
+---
+
+## Stack outputs
+
+| Output | Description |
+|---|---|
+| `GitHubOidcProviderArn` | ARN of the OIDC provider |
+| `GitHubInfraRoleArn` | ARN of the infrastructure deployment role |
+| `GitHubAppRoleArn` | ARN of the Lambda application deployment role |
+
+---
+
+## Using the roles in GitHub Actions
+
+Add `id-token: write` permission to the job so it can request an OIDC token, then use `aws-actions/configure-aws-credentials` to assume the role.
+
+**Infrastructure deployment (CloudFormation):**
 
 ```yaml
 jobs:
@@ -106,13 +152,46 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v2
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::123456789012:role/github-actions-infra-role
+          role-to-assume: arn:aws:iam::<account-id>:role/github-infra-<repo>
           aws-region: us-east-1
 
-      - name: Deploy CloudFormation
-        run: |
-          aws cloudformation deploy --template-file infra.yaml --stack-name acme-infra-stack
+      - name: Deploy stack
+        run: aws cloudformation deploy --template-file infra.yaml --stack-name my-stack
 ```
+
+**Lambda application deployment:**
+
+```yaml
+jobs:
+  deploy-app:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::<account-id>:role/github-app-<repo>
+          aws-region: us-east-1
+
+      - name: Deploy Lambda
+        run: aws lambda update-function-code --function-name my-function --zip-file fileb://function.zip
+```
+
+---
+
+## Security notes
+
+- **Least privilege** — restrict `LambdaFunctionArn` to only the functions that need deploy access, and set `CloudFormationStackNamePrefix` to scope CloudFormation permissions to stacks owned by GitHub Actions.
+- **GitHub Environments** — for production deployments, enable `UseGitHubEnvironment` and configure required reviewers in GitHub to add a human approval gate before roles can be assumed.
+- **Artifact bucket** — set `ArtifactBucketName` to constrain S3 access to a specific bucket rather than granting broad S3 permissions.
+- **`CAPABILITY_NAMED_IAM`** — required because these templates create named IAM resources. Review the templates before deploying to understand what is being created.
+- **Test before prod** — deploy to a sandbox account first and verify GitHub Actions workflows can assume the roles before granting production privileges.

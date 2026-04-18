@@ -11,10 +11,20 @@ Metadata:
           - PoliciesTemplateUrl
           - RolesTemplateUrl
       - Label:
-          default: Reusable role and repository configuration
+          default: GitHub repository
         Parameters:
-          - GitHubConfigJson
-          - RoleConfigJson
+          - GitHubOrg
+          - GitHubRepo
+          - GitHubBranch
+      - Label:
+          default: IAM role names
+        Parameters:
+          - InfraRoleName
+          - AppRoleName
+      - Label:
+          default: Deployment artifacts
+        Parameters:
+          - ArtifactBucketName
     ParameterLabels:
       OidcTemplateUrl:
         default: OIDC provider child template URL
@@ -22,10 +32,18 @@ Metadata:
         default: IAM policies child template URL
       RolesTemplateUrl:
         default: IAM roles child template URL
-      GitHubConfigJson:
-        default: GitHub configuration JSON string
-      RoleConfigJson:
-        default: Role configuration JSON string
+      GitHubOrg:
+        default: GitHub organization or user
+      GitHubRepo:
+        default: GitHub repository name
+      GitHubBranch:
+        default: Branch allowed to assume the roles
+      InfraRoleName:
+        default: Infrastructure deployment role name
+      AppRoleName:
+        default: Application deployment role name
+      ArtifactBucketName:
+        default: S3 artifact bucket name
 
 Parameters:
   OidcTemplateUrl:
@@ -40,19 +58,39 @@ Parameters:
     Type: String
     Description: S3 URL of the child template that creates IAM roles for GitHub workflows
 
-  GitHubConfigJson:
+  GitHubOrg:
     Type: String
-    Description: >-
-      JSON string with reusable GitHub configuration. Example:
-      {"org":"my-org","repo":"my-repo","branch":"main"}
-    Default: '{"org":"my-org","repo":"my-repo","branch":"main"}'
+    Description: GitHub organization or user name (e.g. nforoza)
 
-  RoleConfigJson:
+  GitHubRepo:
     Type: String
     Description: >-
-      JSON string with reusable role configuration. Example:
-      {"infraRoleName":"github-actions-infra-role","appRoleName":"github-actions-app-role"}
-    Default: '{"infraRoleName":"github-actions-infra-role","appRoleName":"github-actions-app-role"}'
+      GitHub repository that will assume these roles (e.g. data-collector).
+      Deploy a separate stack per repo so each gets its own scoped role.
+
+  GitHubBranch:
+    Type: String
+    Default: main
+    Description: Branch allowed to assume the roles
+
+  InfraRoleName:
+    Type: String
+    Description: >-
+      IAM role name for infrastructure deployments. Include the repo name
+      to avoid clashes when deploying multiple stacks (e.g. github-infra-data-collector).
+
+  AppRoleName:
+    Type: String
+    Description: >-
+      IAM role name for Lambda application deployments. Include the repo name
+      to avoid clashes when deploying multiple stacks (e.g. github-app-data-collector).
+
+  ArtifactBucketName:
+    Type: String
+    Default: ''
+    Description: >-
+      S3 bucket name (not ARN) used to store deployment artifacts.
+      The template builds the ARN internally. Leave empty to omit S3 access.
 
 Resources:
   GitHubOidcProviderStack:
@@ -65,8 +103,7 @@ Resources:
     Properties:
       TemplateURL: !Ref PoliciesTemplateUrl
       Parameters:
-        GitHubConfigJson: !Ref GitHubConfigJson
-        RoleConfigJson: !Ref RoleConfigJson
+        ArtifactBucketName: !Ref ArtifactBucketName
 
   GitHubRolesStack:
     Type: AWS::CloudFormation::Stack
@@ -74,8 +111,11 @@ Resources:
       TemplateURL: !Ref RolesTemplateUrl
       Parameters:
         GitHubOidcProviderArn: !GetAtt GitHubOidcProviderStack.Outputs.GitHubOidcProviderArn
-        GitHubConfigJson: !Ref GitHubConfigJson
-        RoleConfigJson: !Ref RoleConfigJson
+        GitHubOrg: !Ref GitHubOrg
+        GitHubRepo: !Ref GitHubRepo
+        GitHubBranch: !Ref GitHubBranch
+        InfraRoleName: !Ref InfraRoleName
+        AppRoleName: !Ref AppRoleName
         InfraPolicyArn: !GetAtt GitHubPoliciesStack.Outputs.InfraPolicyArn
         AppPolicyArn: !GetAtt GitHubPoliciesStack.Outputs.AppPolicyArn
 

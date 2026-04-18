@@ -1,18 +1,14 @@
 [
   {
     "ParameterKey": "GitHubOrg",
-    "ParameterValue": ""
+    "ParameterValue": "<your-github-org-or-username>"
   },
   {
     "ParameterKey": "GitHubRepo",
-    "ParameterValue": ""
+    "ParameterValue": "<repository-that-needs-aws-access>"
   },
   {
     "ParameterKey": "GitHubBranch",
     "ParameterValue": "main"
-  },
-  {
-    "ParameterKey": "GitHubTokenSecretName",
-    "ParameterValue": "github-token"
   }
 ]
