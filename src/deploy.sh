@@ -6,13 +6,15 @@
 #   ./deploy.sh [OPTIONS]
 #
 # Options:
-#   --github-org      <value>   GitHub organization or username (e.g. my-org)
-#   --github-repo     <value>   Repository that will assume the IAM roles (e.g. my-app)
-#   --github-branch   <value>   Branch allowed to assume the roles (e.g. main)
-#   --cf-bucket       <value>   S3 bucket where CloudFormation templates are stored
-#   --cf-prefix       <value>   S3 key prefix (folder) inside the bucket (e.g. github-integration)
-#   --artifact-bucket <value>   S3 bucket name used to store Lambda deployment artifacts
-#   --region          <value>   AWS region to deploy into (e.g. us-east-1)
+#   --github-org        <value>   GitHub organization or username (e.g. my-org)
+#   --github-repo       <value>   Repository that will assume the IAM roles (e.g. my-app)
+#   --github-branch     <value>   Branch allowed to assume the roles (e.g. main)
+#   --cf-bucket         <value>   S3 bucket where CloudFormation templates are stored
+#   --cf-prefix         <value>   S3 key prefix (folder) inside the bucket (e.g. github-integration)
+#   --artifact-bucket   <value>   S3 bucket name used to store Lambda deployment artifacts
+#   --region            <value>   AWS region to deploy into (e.g. us-east-1)
+#   --stack-prefix      <value>   Optional stack-name prefix to scope CloudFormation and IAM role permissions
+#   --cfn-role-prefix   <value>   Optional name prefix for IAM roles that can be passed to CloudFormation as execution roles
 #
 # Example:
 #   ./deploy.sh \
@@ -22,7 +24,9 @@
 #     --cf-bucket my-cloudformation-bucket \
 #     --cf-prefix github-integration \
 #     --artifact-bucket my-artifacts-bucket \
-#     --region us-east-1
+#     --region us-east-1 \
+#     --stack-prefix my-app- \
+#     --cfn-role-prefix github-cfn-execution-
 set -euo pipefail
 
 usage() {
@@ -37,37 +41,43 @@ CF_BUCKET="${CF_BUCKET:-}"
 CF_PREFIX="${CF_PREFIX:-}"
 ARTIFACT_BUCKET="${ARTIFACT_BUCKET:-}"
 AWS_REGION="${AWS_REGION:-}"
+STACK_PREFIX="${STACK_PREFIX:-}"
+CFN_ROLE_PREFIX="${CFN_ROLE_PREFIX:-}"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --github-org)      GITHUB_ORG="$2";      shift 2 ;;
-    --github-repo)     GITHUB_REPO="$2";     shift 2 ;;
-    --github-branch)   GITHUB_BRANCH="$2";   shift 2 ;;
-    --cf-bucket)       CF_BUCKET="$2";       shift 2 ;;
-    --cf-prefix)       CF_PREFIX="$2";       shift 2 ;;
-    --artifact-bucket) ARTIFACT_BUCKET="$2"; shift 2 ;;
-    --region)          AWS_REGION="$2";      shift 2 ;;
-    --help|-h)         usage ;;
+    --github-org)        GITHUB_ORG="$2";        shift 2 ;;
+    --github-repo)       GITHUB_REPO="$2";       shift 2 ;;
+    --github-branch)     GITHUB_BRANCH="$2";     shift 2 ;;
+    --cf-bucket)         CF_BUCKET="$2";         shift 2 ;;
+    --cf-prefix)         CF_PREFIX="$2";         shift 2 ;;
+    --artifact-bucket)   ARTIFACT_BUCKET="$2";   shift 2 ;;
+    --region)            AWS_REGION="$2";        shift 2 ;;
+    --stack-prefix)      STACK_PREFIX="$2";      shift 2 ;;
+    --cfn-role-prefix)   CFN_ROLE_PREFIX="$2";   shift 2 ;;
+    --help|-h)           usage ;;
     *) echo "Error: unknown argument '$1'" >&2; usage ;;
   esac
 done
 
 # Validate all required parameters are provided
 MISSING=()
-[[ -z "${GITHUB_ORG}"      ]] && MISSING+=(--github-org)
-[[ -z "${GITHUB_REPO}"     ]] && MISSING+=(--github-repo)
-[[ -z "${GITHUB_BRANCH}"   ]] && MISSING+=(--github-branch)
-[[ -z "${CF_BUCKET}"       ]] && MISSING+=(--cf-bucket)
-[[ -z "${CF_PREFIX}"       ]] && MISSING+=(--cf-prefix)
-[[ -z "${ARTIFACT_BUCKET}" ]] && MISSING+=(--artifact-bucket)
-[[ -z "${AWS_REGION}"      ]] && MISSING+=(--region)
+[[ -z "${GITHUB_ORG}"       ]] && MISSING+=(--github-org)
+[[ -z "${GITHUB_REPO}"      ]] && MISSING+=(--github-repo)
+[[ -z "${GITHUB_BRANCH}"    ]] && MISSING+=(--github-branch)
+[[ -z "${CF_BUCKET}"        ]] && MISSING+=(--cf-bucket)
+[[ -z "${CF_PREFIX}"        ]] && MISSING+=(--cf-prefix)
+[[ -z "${ARTIFACT_BUCKET}"  ]] && MISSING+=(--artifact-bucket)
+[[ -z "${AWS_REGION}"       ]] && MISSING+=(--region)
+[[ -z "${STACK_PREFIX}"     ]] && MISSING+=(--stack-prefix)
+[[ -z "${CFN_ROLE_PREFIX}"  ]] && MISSING+=(--cfn-role-prefix)
 
 if [[ ${#MISSING[@]} -gt 0 ]]; then
   echo "Error: missing required parameters: ${MISSING[*]}" >&2
   usage
 fi
 
-export GITHUB_ORG GITHUB_REPO GITHUB_BRANCH CF_BUCKET CF_PREFIX ARTIFACT_BUCKET AWS_REGION
+export GITHUB_ORG GITHUB_REPO GITHUB_BRANCH CF_BUCKET CF_PREFIX ARTIFACT_BUCKET AWS_REGION STACK_PREFIX CFN_ROLE_PREFIX
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 "${SCRIPT_DIR}/upload_templates.sh"

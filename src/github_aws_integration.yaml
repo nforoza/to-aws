@@ -25,6 +25,11 @@ Metadata:
           default: Deployment artifacts
         Parameters:
           - ArtifactBucketName
+      - Label:
+          default: Security scoping
+        Parameters:
+          - CloudFormationStackNamePrefix
+          - CloudFormationExecutionRolePrefix
     ParameterLabels:
       OidcTemplateUrl:
         default: OIDC provider child template URL
@@ -44,6 +49,10 @@ Metadata:
         default: Application deployment role name
       ArtifactBucketName:
         default: S3 artifact bucket name
+      CloudFormationStackNamePrefix:
+        default: Stack name prefix for CloudFormation and IAM role scoping
+      CloudFormationExecutionRolePrefix:
+        default: Name prefix for roles passable to CloudFormation
 
 Parameters:
   OidcTemplateUrl:
@@ -92,6 +101,19 @@ Parameters:
       S3 bucket name (not ARN) used to store deployment artifacts.
       The template builds the ARN internally. Leave empty to omit S3 access.
 
+  CloudFormationStackNamePrefix:
+    Type: String
+    Description: >-
+      Stack-name prefix to restrict CloudFormation actions and scope IAM role
+      CRUD to roles whose names start with this prefix.
+
+  CloudFormationExecutionRolePrefix:
+    Type: String
+    Description: >-
+      Name prefix for IAM roles that can be passed to CloudFormation as
+      execution roles (e.g. github-cfn-execution-). Prevents passing
+      unintended privileged roles.
+
 Resources:
   GitHubOidcProviderStack:
     Type: AWS::CloudFormation::Stack
@@ -104,6 +126,8 @@ Resources:
       TemplateURL: !Ref PoliciesTemplateUrl
       Parameters:
         ArtifactBucketName: !Ref ArtifactBucketName
+        CloudFormationStackNamePrefix: !Ref CloudFormationStackNamePrefix
+        CloudFormationExecutionRolePrefix: !Ref CloudFormationExecutionRolePrefix
 
   GitHubRolesStack:
     Type: AWS::CloudFormation::Stack

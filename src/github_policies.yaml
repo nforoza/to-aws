@@ -14,8 +14,7 @@ Parameters:
 
   CloudFormationStackNamePrefix:
     Type: String
-    Default: ''
-    Description: Optional stack-name prefix restriction for CloudFormation actions
+    Description: Stack-name prefix to scope CloudFormation actions and SAM-created IAM roles
 
   LambdaFunctionArn:
     Type: String
@@ -27,8 +26,11 @@ Parameters:
     Default: ''
     Description: Optional S3 bucket used to store Lambda artifacts
 
+  CloudFormationExecutionRolePrefix:
+    Type: String
+    Description: Name prefix for IAM roles allowed to be passed to CloudFormation as execution roles (e.g. github-cfn-execution-)
+
 Conditions:
-  HasStackPrefix: !Not [!Equals [!Ref CloudFormationStackNamePrefix, '']]
   HasArtifactBucket: !Not [!Equals [!Ref ArtifactBucketName, '']]
 
 Resources:
@@ -49,22 +51,26 @@ Resources:
               - cloudformation:DescribeStacks
               - cloudformation:DescribeStackEvents
               - cloudformation:DescribeStackResources
+              - cloudformation:ListStackResources
               - cloudformation:GetTemplate
               - cloudformation:ValidateTemplate
               - cloudformation:CreateChangeSet
               - cloudformation:DeleteChangeSet
               - cloudformation:DescribeChangeSet
               - cloudformation:ExecuteChangeSet
-            Resource: !If
-              - HasStackPrefix
-              - !Sub arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${CloudFormationStackNamePrefix}*
-              - !Sub arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/*
+            Resource: !Sub arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${CloudFormationStackNamePrefix}*
+
+          - Sid: SamTransform
+            Effect: Allow
+            Action:
+              - cloudformation:CreateChangeSet
+            Resource: !Sub arn:${AWS::Partition}:cloudformation:${AWS::Region}:aws:transform/Serverless-2016-10-31
 
           - Sid: PassCloudFormationExecutionRoles
             Effect: Allow
             Action:
               - iam:PassRole
-            Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/*
+            Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${CloudFormationExecutionRolePrefix}*
 
           - Sid: SamLambdaManage
             Effect: Allow
@@ -79,6 +85,7 @@ Resources:
               - lambda:AddPermission
               - lambda:RemovePermission
               - lambda:ListTags
+              - lambda:ListFunctions
               - lambda:TagResource
               - lambda:UntagResource
             Resource: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:*
@@ -96,7 +103,7 @@ Resources:
               - iam:DetachRolePolicy
               - iam:TagRole
               - iam:UntagRole
-            Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/*
+            Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${CloudFormationStackNamePrefix}*
 
           - Sid: SamApiGatewayManage
             Effect: Allow
@@ -113,6 +120,19 @@ Resources:
               - !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}::/restapis
               - !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis/*
               - !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis
+
+          - Sid: SamEventBridgeManage
+            Effect: Allow
+            Action:
+              - events:PutRule
+              - events:DeleteRule
+              - events:DescribeRule
+              - events:PutTargets
+              - events:RemoveTargets
+              - events:ListTargetsByRule
+              - events:TagResource
+              - events:UntagResource
+            Resource: !Sub arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/*
 
           - Sid: SamLogsManage
             Effect: Allow
@@ -136,6 +156,7 @@ Resources:
               - s3:GetObject
               - s3:PutObject
               - s3:ListBucket
+              - s3:GetBucketLocation
             Resource: !If
               - HasArtifactBucket
               - - !Sub arn:${AWS::Partition}:s3:::${ArtifactBucketName}

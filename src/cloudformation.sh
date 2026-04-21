@@ -46,4 +46,6 @@ aws cloudformation deploy \
     ArtifactBucketName="${ARTIFACT_BUCKET}" \
     InfraRoleName="github-infra-${GITHUB_REPO}" \
     AppRoleName="github-app-${GITHUB_REPO}" \
+    CloudFormationStackNamePrefix="${STACK_PREFIX}" \
+    CloudFormationExecutionRolePrefix="${CFN_ROLE_PREFIX}" \
   --region "${AWS_REGION}"
