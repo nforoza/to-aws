@@ -66,6 +66,64 @@ Resources:
               - iam:PassRole
             Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/*
 
+          - Sid: SamLambdaManage
+            Effect: Allow
+            Action:
+              - lambda:CreateFunction
+              - lambda:DeleteFunction
+              - lambda:GetFunction
+              - lambda:GetFunctionConfiguration
+              - lambda:UpdateFunctionCode
+              - lambda:UpdateFunctionConfiguration
+              - lambda:PublishVersion
+              - lambda:AddPermission
+              - lambda:RemovePermission
+              - lambda:ListTags
+              - lambda:TagResource
+              - lambda:UntagResource
+            Resource: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:*
+
+          - Sid: SamIamManage
+            Effect: Allow
+            Action:
+              - iam:CreateRole
+              - iam:DeleteRole
+              - iam:GetRole
+              - iam:GetRolePolicy
+              - iam:PutRolePolicy
+              - iam:DeleteRolePolicy
+              - iam:AttachRolePolicy
+              - iam:DetachRolePolicy
+              - iam:TagRole
+              - iam:UntagRole
+            Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/*
+
+          - Sid: SamApiGatewayManage
+            Effect: Allow
+            Action:
+              - apigateway:GET
+              - apigateway:POST
+              - apigateway:PUT
+              - apigateway:PATCH
+              - apigateway:DELETE
+              - apigateway:TagResource
+              - apigateway:UntagResource
+            Resource:
+              - !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}::/restapis/*
+              - !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}::/restapis
+              - !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis/*
+              - !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis
+
+          - Sid: SamLogsManage
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:DeleteLogGroup
+              - logs:DescribeLogGroups
+              - logs:PutRetentionPolicy
+              - logs:TagResource
+            Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:*
+
           - Sid: ReadCallerIdentity
             Effect: Allow
             Action:
