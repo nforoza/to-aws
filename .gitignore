@@ -52,6 +52,7 @@ credentials
 dist/
 build/
 
+CLAUDE.md
 # Do NOT ignore YAML files for this repository (keep .yml/.yaml tracked)
 # *.yml
 # *.yaml

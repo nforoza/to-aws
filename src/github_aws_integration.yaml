@@ -1,15 +1,18 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Root stack for GitHub Actions OIDC integration in AWS using separate nested CloudFormation stacks
+Description: GitHub Actions OIDC integration — one policy and one role for one repository
 
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
       - Label:
+          default: OIDC provider
+        Parameters:
+          - OidcProviderArn
+      - Label:
           default: Child templates
         Parameters:
-          - OidcTemplateUrl
           - PoliciesTemplateUrl
-          - RolesTemplateUrl
+          - RoleTemplateUrl
       - Label:
           default: GitHub repository
         Parameters:
@@ -17,10 +20,10 @@ Metadata:
           - GitHubRepo
           - GitHubBranch
       - Label:
-          default: IAM role names
+          default: IAM
         Parameters:
-          - InfraRoleName
-          - AppRoleName
+          - RoleName
+          - PolicyName
       - Label:
           default: Deployment artifacts
         Parameters:
@@ -30,128 +33,132 @@ Metadata:
         Parameters:
           - CloudFormationStackNamePrefix
           - CloudFormationExecutionRolePrefix
-    ParameterLabels:
-      OidcTemplateUrl:
-        default: OIDC provider child template URL
-      PoliciesTemplateUrl:
-        default: IAM policies child template URL
-      RolesTemplateUrl:
-        default: IAM roles child template URL
-      GitHubOrg:
-        default: GitHub organization or user
-      GitHubRepo:
-        default: GitHub repository name
-      GitHubBranch:
-        default: Branch allowed to assume the roles
-      InfraRoleName:
-        default: Infrastructure deployment role name
-      AppRoleName:
-        default: Application deployment role name
-      ArtifactBucketName:
-        default: S3 artifact bucket name
-      CloudFormationStackNamePrefix:
-        default: Stack name prefix for CloudFormation and IAM role scoping
-      CloudFormationExecutionRolePrefix:
-        default: Name prefix for roles passable to CloudFormation
+      - Label:
+          default: Tagging
+        Parameters:
+          - Application
+          - Project
+          - DeploymentType
+          - ManagedBy
 
 Parameters:
-  OidcTemplateUrl:
+  OidcProviderArn:
     Type: String
-    Description: S3 URL of the child template that creates the GitHub OIDC provider
+    Description: ARN of the GitHub Actions OIDC provider (from the GitHub-Actions-OIDC-Provider stack)
 
   PoliciesTemplateUrl:
     Type: String
-    Description: S3 URL of the child template that creates IAM managed policies for GitHub workflows
+    Description: S3 URL of the policies child template
 
-  RolesTemplateUrl:
+  RoleTemplateUrl:
     Type: String
-    Description: S3 URL of the child template that creates IAM roles for GitHub workflows
+    Description: S3 URL of the role child template
 
   GitHubOrg:
     Type: String
-    Description: GitHub organization or user name (e.g. nforoza)
+    Description: GitHub organization or user name
 
   GitHubRepo:
     Type: String
-    Description: >-
-      GitHub repository that will assume these roles (e.g. data-collector).
-      Deploy a separate stack per repo so each gets its own scoped role.
+    Description: GitHub repository that will assume the role
 
   GitHubBranch:
     Type: String
     Default: main
-    Description: Branch allowed to assume the roles
+    Description: Branch allowed to assume the role
 
-  InfraRoleName:
+  RoleName:
     Type: String
-    Description: >-
-      IAM role name for infrastructure deployments. Include the repo name
-      to avoid clashes when deploying multiple stacks (e.g. github-infra-data-collector).
+    Description: IAM role name (e.g. github-app-data-collector or github-infra-data-collector-infra)
 
-  AppRoleName:
+  PolicyName:
     Type: String
-    Description: >-
-      IAM role name for Lambda application deployments. Include the repo name
-      to avoid clashes when deploying multiple stacks (e.g. github-app-data-collector).
+    Description: Managed policy name — must be unique per stack
 
   ArtifactBucketName:
     Type: String
     Default: ''
-    Description: >-
-      S3 bucket name (not ARN) used to store deployment artifacts.
-      The template builds the ARN internally. Leave empty to omit S3 access.
+    Description: S3 bucket name for deployment artifacts. Leave empty to omit S3 access.
 
   CloudFormationStackNamePrefix:
     Type: String
-    Description: >-
-      Stack-name prefix to restrict CloudFormation actions and scope IAM role
-      CRUD to roles whose names start with this prefix.
+    Description: Restricts CloudFormation actions and IAM role CRUD to stacks with this prefix
 
   CloudFormationExecutionRolePrefix:
     Type: String
-    Description: >-
-      Name prefix for IAM roles that can be passed to CloudFormation as
-      execution roles (e.g. github-cfn-execution-). Prevents passing
-      unintended privileged roles.
+    Description: Restricts iam:PassRole to roles whose names start with this prefix
+
+  Application:
+    Type: String
+    Description: Application tag — identifies the owning application in AWS Resource Groups (e.g. trading)
+
+  Project:
+    Type: String
+    Default: github-actions-oidc
+    Description: Project tag applied to all resources in this stack
+
+  DeploymentType:
+    Type: String
+    AllowedValues: [sam, infra]
+    Description: Deployment type tag — sam for application stacks, infra for infrastructure stacks
+
+  ManagedBy:
+    Type: String
+    Default: cloudformation
+    Description: ManagedBy tag applied to all resources in this stack
 
 Resources:
-  GitHubOidcProviderStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: !Ref OidcTemplateUrl
-
   GitHubPoliciesStack:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: !Ref PoliciesTemplateUrl
       Parameters:
+        PolicyName: !Ref PolicyName
         ArtifactBucketName: !Ref ArtifactBucketName
         CloudFormationStackNamePrefix: !Ref CloudFormationStackNamePrefix
         CloudFormationExecutionRolePrefix: !Ref CloudFormationExecutionRolePrefix
 
-  GitHubRolesStack:
+  GitHubRoleStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Ref RolesTemplateUrl
+      TemplateURL: !Ref RoleTemplateUrl
       Parameters:
-        GitHubOidcProviderArn: !GetAtt GitHubOidcProviderStack.Outputs.GitHubOidcProviderArn
+        GitHubOidcProviderArn: !Ref OidcProviderArn
         GitHubOrg: !Ref GitHubOrg
         GitHubRepo: !Ref GitHubRepo
         GitHubBranch: !Ref GitHubBranch
-        InfraRoleName: !Ref InfraRoleName
-        AppRoleName: !Ref AppRoleName
-        InfraPolicyArn: !GetAtt GitHubPoliciesStack.Outputs.InfraPolicyArn
-        AppPolicyArn: !GetAtt GitHubPoliciesStack.Outputs.AppPolicyArn
+        RoleName: !Ref RoleName
+        PolicyArn: !GetAtt GitHubPoliciesStack.Outputs.PolicyArn
+
+  ResourceGroup:
+    Type: AWS::ResourceGroups::Group
+    Properties:
+      Name: !Sub github-actions-${GitHubRepo}
+      Description: !Sub GitHub Actions OIDC resources for ${GitHubOrg} ${GitHubRepo}
+      ResourceQuery:
+        Type: TAG_FILTERS_1_0
+        Query:
+          ResourceTypeFilters:
+            - AWS::AllSupported
+          TagFilters:
+            - Key: Application
+              Values: [!Ref Application]
+            - Key: Project
+              Values: [!Ref Project]
 
 Outputs:
-  GitHubOidcProviderArn:
-    Description: ARN of the GitHub OIDC provider
-    Value: !GetAtt GitHubOidcProviderStack.Outputs.GitHubOidcProviderArn
+  GitHubRoleArn:
+    Description: ARN of the deployment role
+    Value: !GetAtt GitHubRoleStack.Outputs.GitHubRoleArn
 
-  GitHubInfraRoleArn:
-    Description: ARN of the infrastructure deployment role
-    Value: !GetAtt GitHubRolesStack.Outputs.GitHubInfraRoleArn
+  ResourceGroupArn:
+    Description: ARN of the Resource Group for this repository's GitHub Actions resources
+    Value: !GetAtt ResourceGroup.Arn
 
-  GitHubAppRoleArn:
-    Description: ARN of the Lambda application deployment role
-    Value: !GetAtt GitHubRolesStack.Outputs.GitHubAppRoleArn
+  Application:
+    Description: Application tag applied to all resources in this stack
+    Value: !Ref Application
+
+  Project:
+    Description: Project tag applied to all resources in this stack
+    Value: !Ref Project

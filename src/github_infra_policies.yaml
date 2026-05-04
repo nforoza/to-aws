@@ -1,0 +1,113 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: IAM managed policies for GitHub Actions general infrastructure deployments (S3 buckets, non-SAM stacks)
+
+Parameters:
+  PolicyName:
+    Type: String
+    Description: Managed policy name (e.g. github-actions-policy-data-collector-infra)
+
+  CloudFormationStackNamePrefix:
+    Type: String
+    Description: Stack-name prefix to scope CloudFormation actions
+
+  CloudFormationExecutionRolePrefix:
+    Type: String
+    Description: Name prefix for IAM roles allowed to be passed to CloudFormation as execution roles
+
+  ArtifactBucketName:
+    Type: String
+    Default: ''
+    Description: Optional S3 bucket used to store deployment artifacts
+
+Conditions:
+  HasArtifactBucket: !Not [!Equals [!Ref ArtifactBucketName, '']]
+
+Resources:
+  GitHubInfraDeployPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Ref PolicyName
+      Description: Policy for GitHub Actions general infrastructure deployments (S3 buckets, non-SAM stacks)
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: CloudFormationDeploy
+            Effect: Allow
+            Action:
+              - cloudformation:CreateStack
+              - cloudformation:UpdateStack
+              - cloudformation:DeleteStack
+              - cloudformation:DescribeStacks
+              - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeStackResources
+              - cloudformation:ListStackResources
+              - cloudformation:GetTemplate
+              - cloudformation:ValidateTemplate
+              - cloudformation:CreateChangeSet
+              - cloudformation:DeleteChangeSet
+              - cloudformation:DescribeChangeSet
+              - cloudformation:ExecuteChangeSet
+            Resource: !Sub arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${CloudFormationStackNamePrefix}*
+
+          - Sid: PassCloudFormationExecutionRoles
+            Effect: Allow
+            Action:
+              - iam:PassRole
+            Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${CloudFormationExecutionRolePrefix}*
+
+          - Sid: S3BucketCreate
+            Effect: Allow
+            Action:
+              - s3:CreateBucket
+            Resource: "*"
+
+          - Sid: S3BucketManage
+            Effect: Allow
+            Action:
+              - s3:DeleteBucket
+              - s3:GetBucketLocation
+              - s3:GetBucketPolicy
+              - s3:PutBucketPolicy
+              - s3:DeleteBucketPolicy
+              - s3:GetBucketTagging
+              - s3:PutBucketTagging
+              - s3:GetBucketVersioning
+              - s3:PutBucketVersioning
+              - s3:GetEncryptionConfiguration
+              - s3:PutEncryptionConfiguration
+              - s3:GetBucketPublicAccessBlock
+              - s3:PutBucketPublicAccessBlock
+              - s3:GetLifecycleConfiguration
+              - s3:PutLifecycleConfiguration
+              - s3:GetBucketNotification
+              - s3:PutBucketNotification
+              - s3:GetBucketLogging
+              - s3:PutBucketLogging
+              - s3:GetBucketOwnershipControls
+              - s3:PutBucketOwnershipControls
+              - s3:ListBucket
+            Resource: "*"
+
+          - Sid: ReadCallerIdentity
+            Effect: Allow
+            Action:
+              - sts:GetCallerIdentity
+            Resource: "*"
+
+          - Sid: S3ArtifactAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:ListBucket
+              - s3:GetBucketLocation
+            Resource: !If
+              - HasArtifactBucket
+              - - !Sub arn:${AWS::Partition}:s3:::${ArtifactBucketName}
+                - !Sub arn:${AWS::Partition}:s3:::${ArtifactBucketName}/*
+              - !Ref AWS::NoValue
+
+Outputs:
+  PolicyArn:
+    Description: ARN of the general infrastructure deployment managed policy
+    Value: !Ref GitHubInfraDeployPolicy
